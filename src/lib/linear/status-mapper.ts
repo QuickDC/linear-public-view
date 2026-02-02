@@ -15,6 +15,10 @@ const STATUS_MAP: Record<string, PublicStatus> = {
   'Done': 'done',
   'Completed': 'done',
   'Canceled': 'cancelled',
+  'In Dev': 'in-progress',
+  'Dev Done': 'in-progress',
+  'In Wessense': 'in-progress',
+  'In Manual QA': 'in-progress'
 };
 
 /**

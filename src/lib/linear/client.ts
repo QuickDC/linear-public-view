@@ -1,4 +1,4 @@
-import { GET_ISSUES_QUERY, GET_ISSUE_COMMENTS_QUERY, ADD_COMMENT_MUTATION } from './queries';
+import { GET_ISSUE_COMMENTS_QUERY, ADD_COMMENT_MUTATION } from './queries';
 import { mapLinearStatus } from './status-mapper';
 import type { LinearIssue, NormalizedIssue, NormalizedComment, AddCommentInput } from './types';
 
@@ -37,23 +37,81 @@ async function linearGraphQL(query: string, variables: Record<string, any> = {})
 }
 
 /**
+ * Builds a dynamic GraphQL query with only the filters that are provided
+ */
+function buildIssuesQuery(hasTeamId: boolean, hasProjectId: boolean, hasLabelName: boolean): string {
+  const filters: string[] = [];
+
+  if (hasTeamId) {
+    filters.push('team: { id: { eq: $teamId } }');
+  }
+  if (hasProjectId) {
+    filters.push('project: { id: { eq: $projectId } }');
+  }
+  if (hasLabelName) {
+    filters.push('labels: { name: { eq: $labelName } }');
+  }
+
+  const filterString = filters.length > 0 ? `filter: { ${filters.join(', ')} }` : '';
+
+  const variableDefinitions: string[] = [];
+  if (hasTeamId) variableDefinitions.push('$teamId: String');
+  if (hasProjectId) variableDefinitions.push('$projectId: String');
+  if (hasLabelName) variableDefinitions.push('$labelName: String');
+
+  const variablesString = variableDefinitions.length > 0 ? `(${variableDefinitions.join(', ')})` : '';
+
+  return `
+    query GetIssues${variablesString} {
+      issues(
+        ${filterString}
+        ${filterString ? '' : ''}first: 100
+      ) {
+        nodes {
+          id
+          identifier
+          title
+          description
+          state {
+            name
+          }
+          labels {
+            nodes {
+              name
+              color
+            }
+          }
+          createdAt
+          updatedAt
+        }
+      }
+    }
+  `;
+}
+
+/**
  * Fetches issues from Linear and normalizes them to public format
  */
 export async function fetchIssues(): Promise<NormalizedIssue[]> {
   const variables: Record<string, string> = {};
 
   // Add optional filters from environment variables
-  if (process.env.LINEAR_TEAM_ID) {
-    variables.teamId = process.env.LINEAR_TEAM_ID;
+  const hasTeamId = !!process.env.LINEAR_TEAM_ID;
+  const hasProjectId = !!process.env.LINEAR_PROJECT_ID;
+  const hasLabelName = !!process.env.LINEAR_ROADMAP_LABEL;
+
+  if (hasTeamId) {
+    variables.teamId = process.env.LINEAR_TEAM_ID!;
   }
-  if (process.env.LINEAR_PROJECT_ID) {
-    variables.projectId = process.env.LINEAR_PROJECT_ID;
+  if (hasProjectId) {
+    variables.projectId = process.env.LINEAR_PROJECT_ID!;
   }
-  if (process.env.LINEAR_ROADMAP_LABEL) {
-    variables.labelName = process.env.LINEAR_ROADMAP_LABEL;
+  if (hasLabelName) {
+    variables.labelName = process.env.LINEAR_ROADMAP_LABEL!;
   }
 
-  const data = await linearGraphQL(GET_ISSUES_QUERY, variables);
+  const query = buildIssuesQuery(hasTeamId, hasProjectId, hasLabelName);
+  const data = await linearGraphQL(query, variables);
   const issues: LinearIssue[] = data.issues.nodes;
 
   // Normalize issues to public format with status mapping
